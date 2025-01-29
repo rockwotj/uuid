@@ -6,6 +6,7 @@ package uuid
 
 import (
 	"io"
+	"time"
 )
 
 // UUID version 7 features a time-ordered value field derived from the widely
@@ -21,11 +22,20 @@ import (
 // Uses the randomness pool if it was enabled with EnableRandPool.
 // On error, NewV7 returns Nil and an error
 func NewV7() (UUID, error) {
+	return NewV7WithTime(nil)
+}
+
+// NewV7WithTime returns a time ordered Version 7 UUID.
+// It is similar to the NewV7 function, but allows you to specify the time.
+// If time is passed as nil, then the current time is used.
+//
+// If getTime fails to return the current NewV7WithTime returns Nil and an error.
+func NewV7WithTime(customTime *time.Time) (UUID, error) {
 	uuid, err := NewRandom()
 	if err != nil {
 		return uuid, err
 	}
-	makeV7(uuid[:])
+	makeV7(customTime, uuid[:])
 	return uuid, nil
 }
 
@@ -38,14 +48,14 @@ func NewV7FromReader(r io.Reader) (UUID, error) {
 		return uuid, err
 	}
 
-	makeV7(uuid[:])
+	makeV7(nil, uuid[:])
 	return uuid, nil
 }
 
 // makeV7 fill 48 bits time (uuid[0] - uuid[5]), set version b0111 (uuid[6])
 // uuid[8] already has the right version number (Variant is 10)
 // see function NewV7 and NewV7FromReader
-func makeV7(uuid []byte) {
+func makeV7(customTime *time.Time, uuid []byte) {
 	/*
 		 0                   1                   2                   3
 		 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
@@ -61,8 +71,14 @@ func makeV7(uuid []byte) {
 	*/
 	_ = uuid[15] // bounds check
 
-	t, s := getV7Time()
-
+	var t, s int64
+	if customTime == nil {
+		t, s = getV7Time()
+	} else {
+		unix := customTime.UnixNano()
+		t = unix / nanoPerMilli
+		s = (unix - t*nanoPerMilli) >> 8
+	}
 	uuid[0] = byte(t >> 40)
 	uuid[1] = byte(t >> 32)
 	uuid[2] = byte(t >> 24)
